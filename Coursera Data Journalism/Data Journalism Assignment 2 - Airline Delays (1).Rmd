@@ -47,9 +47,11 @@ Delays can be categorized into:
 
 ### Note on methodology and data
 Dataset—Airline Delay Causes-is provided with a data file consisting of on-time statistics for airlines in the United States. This data set is freely available from The US Department of Transportation at 
-http://www.transtats.bts.gov/OT_Delay/OT_DelayCause1.asp A copy of the data containing entries ranging from February, 2009 to February, 2019 was provided in data/assignment-airlinedelay.csv. List of airport codes with coordinates from [DtataHub](https://datahub.io/core/airport-codes).
+http://www.transtats.bts.gov/OT_Delay/OT_DelayCause1.asp A copy of the data containing entries ranging from February, 2009 to February, 2019 was provided in data/assignment-airlinedelay.csv. List of airport codes with coordinates from [DataHub](https://datahub.io/core/airport-codes).
 
-Assignment instruction suggested using Python/Plotly library, or any other. Hence I decided to use R+ggplot, as I have better command of this technology. I used RMarkdown to knit into PDF file. 
+Assignment instruction suggested using Python/Plotly library, or any other. Hence I decided to use R+ggplot, as I have better command of this technology. I used RMarkdown to knit into HTML file. 
+
+Code and all all files are  available online in GitHub repo https://github.com/MikePeleah/Learning-Bits-n-Pieces/tree/main/Coursera%20Data%20Journalism
 
 ### First look on dataset
 Dataset contains 155692 records in 22 columns. Summery of varibles and head rows provided below.
@@ -150,6 +152,88 @@ delay_time_plot
 
 ```
 
+### Let's look in details by airports and companies 
+
+The major cause of delay during the data period was an Aircraft delayed in the previous flight (36.7%) followed by Natl Air Service (31.6%) and Carriers (28.4%). Weather (3%) and Security (less 1%) were minor cuases.
+
+```{r stat3a, include=TRUE, echo=FALSE, warning=FALSE}
+# Causes of delay
+df %>% 
+  summarise(nflights=sum(arr_flights, na.rm=TRUE), 
+            ndelays=sum(arr_del15, na.rm=TRUE), 
+            ncarrier = sum(carrier_ct, na.rm=TRUE), 
+            nweather = sum(weather_ct, na.rm=TRUE), 
+            nnas = sum(nas_ct, na.rm=TRUE), 
+            nsecurity = sum(security_ct, na.rm=TRUE), 
+            nlate_aircraft = sum(late_aircraft_ct, na.rm=TRUE)) %>% 
+  mutate(pdelay=ndelays / nflights * 100) %>% 
+  mutate(sh_carrier = ncarrier / ndelays * 100,
+         sh_weather = nweather/ ndelays * 100,
+         sh_nas = nnas / ndelays * 100,
+         sh_security = nsecurity / ndelays * 100,
+         sh_late_aircraft = nlate_aircraft / ndelays * 100) %>%
+  select(pdelay, sh_carrier:sh_late_aircraft) %>%
+  pivot_longer(pdelay:sh_late_aircraft, names_to = "stat", values_to = "Country average") %>%
+  mutate(stat = factor(stat, 
+                        levels = c("pdelay", "sh_carrier", "sh_weather", "sh_nas", "sh_security", "sh_late_aircraft"),
+                        labels = c("Probability of delay (%), by cause", ".. Carriers", ".. Weather", ".. Natl Air Service", ".. Security", ".. Aircraft delayed in the previous flight"))) 
+```
+
+
+Let's look on carriers in more details 
+```{r stat3b, include=TRUE, echo=FALSE, warning=FALSE}
+carrier_delays_cause <- df %>% 
+  group_by(carrier_name) %>% 
+  summarise(nflights=sum(arr_flights, na.rm=TRUE), 
+            ndelays=sum(arr_del15, na.rm=TRUE), 
+            ncarrier = sum(carrier_ct, na.rm=TRUE), 
+            nweather = sum(weather_ct, na.rm=TRUE), 
+            nnas = sum(nas_ct, na.rm=TRUE), 
+            nsecurity = sum(security_ct, na.rm=TRUE), 
+            nlate_aircraft = sum(late_aircraft_ct, na.rm=TRUE)) %>% 
+  mutate(pdelay=ndelays / nflights * 100) %>% 
+  mutate(sh_carrier = ncarrier / ndelays * 100,
+         sh_weather = nweather/ ndelays * 100,
+         sh_nas = nnas / ndelays * 100,
+         sh_security = nsecurity / ndelays * 100,
+         sh_late_aircraft = nlate_aircraft / ndelays * 100) %>%
+  arrange(desc(pdelay)) %>% 
+  select(carrier_name, pdelay, sh_carrier:sh_late_aircraft)
+carrier_delays_cause %>% slice_max(pdelay, n = 10)
+carrier_delays_cause %>% slice_min(pdelay, n = 10)
+
+carrier_delays_cause %>% arrange(desc(sh_carrier)) %>% slice_max(sh_carrier, n = 10)
+carrier_delays_cause %>% arrange(desc(sh_late_aircraft)) %>% slice_max(sh_late_aircraft, n = 10)
+```
+
+Now, let's look on airports  in more details--it seems some of them are especially heavy affected by weather, which casues most of delays. Some airports also sfuffer from chain delays, which could casue up to 80% of delays. 
+```{r stat3c, include=TRUE, echo=FALSE, warning=FALSE}
+
+airport_delays_cause <- df %>% 
+  group_by(airport_name) %>% 
+  summarise(nflights=sum(arr_flights, na.rm=TRUE), 
+            ndelays=sum(arr_del15, na.rm=TRUE), 
+            ncarrier = sum(carrier_ct, na.rm=TRUE), 
+            nweather = sum(weather_ct, na.rm=TRUE), 
+            nnas = sum(nas_ct, na.rm=TRUE), 
+            nsecurity = sum(security_ct, na.rm=TRUE), 
+            nlate_aircraft = sum(late_aircraft_ct, na.rm=TRUE)) %>% 
+  mutate(pdelay=ndelays / nflights * 100) %>% 
+  filter(nflights > 10) %>%
+  mutate(sh_carrier = ncarrier / ndelays * 100,
+         sh_weather = nweather/ ndelays * 100,
+         sh_nas = nnas / ndelays * 100,
+         sh_security = nsecurity / ndelays * 100,
+         sh_late_aircraft = nlate_aircraft / ndelays * 100) %>%
+  arrange(desc(pdelay)) %>% 
+  select(airport_name, pdelay, sh_carrier:sh_late_aircraft)
+airport_delays_cause %>% slice_max(pdelay, n = 10)
+airport_delays_cause %>% slice_min(pdelay, n = 10)
+
+airport_delays_cause %>% arrange(desc(sh_weather)) %>% slice_max(sh_weather, n = 10)
+airport_delays_cause %>% arrange(desc(sh_late_aircraft)) %>% slice_max(sh_late_aircraft, n = 10)
+```
+
 
 ```{r processing1, include=TRUE, echo=FALSE, warning=FALSE}
 # Load airport codes and convert coordinates into latitude, longitude  
@@ -174,7 +258,7 @@ delays_airport <- df %>%
 #head(delays_airport)
 ```
 
-
+Last but not the least, let's look on geography of delays
 ```{r map_of_delays, include=TRUE, echo=FALSE, warning=FALSE, out.width="100%"}
 ## construct chart for continental US + Hawaii  
 delays_plot <- ggplot() +

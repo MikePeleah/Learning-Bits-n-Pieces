@@ -1,5 +1,6 @@
 # Learning Bits and Pieces 
-Repository of codes produced for different learning activities. 
+Repository for Bits and Pieces of codes produced for different learning activities. 
+
 
 
 
