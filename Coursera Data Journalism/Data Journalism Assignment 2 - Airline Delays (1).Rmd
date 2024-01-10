@@ -1,0 +1,194 @@
+---
+title: "Data Journalism Assignment 2 - Airline Delays"
+author: "Mike Peleah"
+date: "2024-01-01"
+output:
+  html_document:
+    df_print: paged
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+#knitr::knit(output = paste0(dirname(rstudioapi::getActiveDocumentContext()$path),"/1.html"
+
+# Load libraries 
+library(tidyverse)    # tidyverse for data manipulations 
+library(ggplot2)      # tidyverse data visualization package
+library(gridExtra)    # library for arranging charts 
+library(maps)
+
+# Set working directory--necessary for R script, not necessary form Markdown 
+# setwd(dirname(rstudioapi::getActiveDocumentContext()$path))
+# Load the World Map
+world_map <- map_data("world")
+# Load data set from zip file
+file <- unz("data/assignment-airlinedelay.zip", "assignment-airlinedelay.csv")
+df <- read.csv(file, stringsAsFactors = FALSE)
+
+```
+
+
+## Description
+This is an open-ended assignment requiring your critical thinking skills. Be ready to explore, experiment, and program on your own! You can visualize the flight delay data with maps, bar charts, line charts, scatterplots, and many others.
+Some guidance questions include:
+- Which airline should you fly on to avoid significant delays?
+- Which months should you fly on to avoid significant delays?
+- Any relationships between seasons and flight delays?
+- Which region of airport has the most significant number of delays?
+- What is the major reasons for delay?
+
+Delays can be categorized into:
+- **Air carrier**, where the cause was within the airline's control (e.g., maintenance or crew problems, aircraft cleaning, baggage loading, fueling, etc.).
+- **Extreme weather** such as tornadoes, blizzards, or hurricanes. 
+- **National Aviation System (NAS)**, which refers to a broad set of conditions, such as non-extreme weather conditions, airport operations, heavy traffic volume, and air traffic control.
+- **Late-arriving aircraft**, where a previous flight with same aircraft arrived late, causing the present flight to depart late.
+- **Security**, caused by evacuation of a terminal or concourse, re-boarding of aircraft because of a security breach, inoperative screening equipment, and/or long lines in excess of 29 minutes at screening areas. 
+
+
+### Note on methodology and data
+Dataset—Airline Delay Causes-is provided with a data file consisting of on-time statistics for airlines in the United States. This data set is freely available from The US Department of Transportation at 
+http://www.transtats.bts.gov/OT_Delay/OT_DelayCause1.asp A copy of the data containing entries ranging from February, 2009 to February, 2019 was provided in data/assignment-airlinedelay.csv. List of airport codes with coordinates from [DtataHub](https://datahub.io/core/airport-codes).
+
+Assignment instruction suggested using Python/Plotly library, or any other. Hence I decided to use R+ggplot, as I have better command of this technology. I used RMarkdown to knit into PDF file. 
+
+### First look on dataset
+Dataset contains 155692 records in 22 columns. Summery of varibles and head rows provided below.
+
+```{r dataset_glance, include=TRUE, echo=FALSE}
+nrow(df)
+summary(df)
+# head(df)
+```
+
+#### Best and worst airports and companies by number of delays:
+```{r stat1, include=TRUE, echo=FALSE, warning=FALSE}
+# check basic info about dataset 
+# df %>% group_by(carrier_name) %>% summarise(n = n()) %>% arrange(desc(n))
+# df %>% group_by(airport_name) %>% summarise(n = n()) %>% arrange(desc(n))
+
+carrier_delays <- df %>% 
+  group_by(carrier_name) %>% 
+  summarise(nflights=sum(arr_flights, na.rm=TRUE), ndelays=sum(arr_del15, na.rm=TRUE)) %>% 
+  mutate(pdelay=ndelays / nflights * 100) %>% 
+  arrange(desc(pdelay)) 
+carrier_delays %>% slice_max(pdelay, n = 10)
+carrier_delays %>% slice_min(pdelay, n = 10)
+
+airport_delays <- df %>% 
+  group_by(airport_name) %>% 
+  summarise(nflights=sum(arr_flights, na.rm=TRUE), ndelays=sum(arr_del15, na.rm=TRUE)) %>% 
+  mutate(pdelay=ndelays / nflights * 100) %>%
+  filter(nflights > 10) %>% 
+  arrange(desc(pdelay)) 
+airport_delays %>% slice_max(pdelay, n = 10)
+airport_delays %>% slice_min(pdelay, n = 10)
+```
+
+### Let's explore if big airports and companies are more prone to delays 
+```{r chart1, include=TRUE, echo=FALSE, warning=FALSE}
+plot1 <- ggplot(carrier_delays) +
+  geom_point(aes(x = nflights, y = pdelay), size = 2, shape = 15, color = 'darkblue') +
+  geom_smooth(method=lm, aes(x = nflights, y = pdelay), se=FALSE, col='blue', size=1) + 
+  scale_x_log10() + 
+  theme_minimal() + 
+  labs(title = "Carrier size and probability of delay", 
+       caption = NULL,
+       x = "Number of flights (log)", 
+       y = "Probability of delay (%)")
+
+plot2 <- ggplot(airport_delays) +
+  geom_point(aes(x = nflights, y = pdelay), size = 2, shape = 17, color = 'darkred') +
+  geom_smooth(method=lm, aes(x = nflights, y = pdelay), se=FALSE, col='red', size=1) +
+  scale_x_log10() + 
+  theme_minimal() + 
+  labs(title = "Airport intensity and probability of delay", 
+       caption = NULL,
+       x = "Number of flights (log)", 
+       y = "Probability of delay (%)")
+
+grid.arrange(plot1, plot2, nrow = 1, top = "Size does(n't) matter?")
+```
+
+
+#### Let's explore causes of delay:
+
+```{r stat2, include=TRUE, echo=FALSE, warning=FALSE, out.width="100%"}
+# Causes of delay
+delay_time <- df %>% 
+  mutate(avg_delay = arr_delay / arr_del15, 
+         avg_carrier = carrier_delay / carrier_ct,
+         avg_weather = weather_delay/ weather_ct,
+         avg_nas = nas_delay / nas_ct,
+         avg_security = security_delay / security_ct,
+         avg_late_aircraft = late_aircraft_delay / late_aircraft_ct) %>%
+  select(avg_delay:avg_late_aircraft) %>% 
+  pivot_longer(avg_delay:avg_late_aircraft, names_to = "cause", values_to = "delay_time") %>%
+  filter(delay_time !=0) %>% filter(is.finite(delay_time)) %>% 
+  mutate(cause = factor(cause, 
+                        levels = c("avg_delay", "avg_carrier", "avg_weather", "avg_nas", "avg_security", "avg_late_aircraft"),
+                        labels = c("Total delay", "Carriers", "Weather", "Natl Air Service", "Security", "Aircraft delayed in the previous flight"))) 
+  
+delay_time %>% group_by(cause) %>% summarise(avg_delay = mean(delay_time), median_delay = median(delay_time), min_delay = min(delay_time), max_delay = max(delay_time))
+
+# Define color bling palettes
+# The palette with grey:
+cbgPalette <- c("#999999", "#E69F00", "#56B4E9", "#009E73", "#F0E442", "#0072B2", "#D55E00", "#CC79A7")
+# The palette with black:
+cbbPalette <- c("#000000", "#E69F00", "#56B4E9", "#009E73", "#F0E442", "#0072B2", "#D55E00", "#CC79A7")
+
+
+delay_time_plot <- ggplot(delay_time) + 
+  geom_density(aes(y=..density.., x=delay_time, fill=cause), alpha=0.75) + 
+  scale_fill_manual(values=cbgPalette) +
+  xlim(c(0, 300)) +
+  labs(title = "Delays by cause, minutes", 
+       caption ="Notes: Coursera, Visualization for Data Journalism, \nPeer-graded Assignment 2: Using Plotly for Data Visualization\nData source: The U.S. Department of Transportations: http://www.transtats.bts.gov/OT_Delay/OT_DelayCause1.asp, \nsubset containing entries ranging from Feb 2009 – Feb 2019",
+       x = "Delay, minutes", 
+       fill = "Cause of delay")
+
+delay_time_plot 
+
+```
+
+
+```{r processing1, include=TRUE, echo=FALSE, warning=FALSE}
+# Load airport codes and convert coordinates into latitude, longitude  
+#      airport dataset https://datahub.io/core/airport-codes#data
+file <- unz("data/airport-codes_csv.zip", "airport-codes_csv.csv")
+airports <- read.csv(file, sep = ",", stringsAsFactors = FALSE)%>%
+  mutate(lat = as.numeric(str_extract(str_replace_all(coordinates,","," "), "^(.*?) ")), 
+         long = as.numeric(str_extract(str_replace_all(coordinates,","," "), " (.*?)$")))
+# airports %>% filter(iata_code == "LAX")
+
+df <- df %>%
+  left_join(airports %>% select(iata_code, lat, long), by = c("airport" = "iata_code"))
+
+delays_airport <- df %>% 
+                     group_by(airport, airport_name) %>% 
+                     summarise(nflights=sum(arr_flights, na.rm=TRUE), ndelays=sum(arr_del15, na.rm=TRUE)) %>% 
+                     mutate(pdelay=ndelays / nflights * 100) %>%
+                     filter(nflights > 10) %>% 
+                     arrange(desc(pdelay)) %>%
+                     left_join(airports %>% select(iata_code, lat, long), 
+                               by = c("airport" = "iata_code"))
+#head(delays_airport)
+```
+
+
+```{r map_of_delays, include=TRUE, echo=FALSE, warning=FALSE, out.width="100%"}
+## construct chart for continental US + Hawaii  
+delays_plot <- ggplot() +
+  geom_polygon (data = world_map, aes(x = long, y = lat, group = group), fill = "lightyellow", color = "gray") +
+  geom_point (data = delays_airport, aes(x = lat, y = long, size = log10(nflights), color = pdelay), alpha = .5, shape = 19) +
+  coord_fixed(ratio = 1) + 
+  scale_colour_gradient (low="white", high="darkred", na.value = "grey50") +
+  coord_sf(xlim = c(-180, -30), ylim = c(10, 75), expand = FALSE) + 
+  labs(title = "Delays by airports", 
+       caption ="Notes: Coursera, Visualization for Data Journalism, \nPeer-graded Assignment 2: Using Plotly for Data Visualization\nData source: The U.S. Department of Transportations: http://www.transtats.bts.gov/OT_Delay/OT_DelayCause1.asp, \nsubset containing entries ranging from Feb 2009 – Feb 2019",
+       size = "Airport size (log flights)", 
+       color = "Probability of delay (%)", 
+       x = NULL, 
+       y = NULL) + 
+  theme_void() 
+delays_plot
+```
